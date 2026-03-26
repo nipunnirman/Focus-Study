@@ -119,7 +119,7 @@ class SessionBody(BaseModel):
     duration_minutes: int
     completed: bool
     stopped_early: bool
-    subject: Optional[str] = "General"
+    subject: Optional[str] = "Bio"
     started_at: str
     ended_at: str
 

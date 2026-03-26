@@ -11,7 +11,7 @@ function fmtTime(secs) {
 function token() { return localStorage.getItem("sf_token"); }
 function authHeaders() { return { "Content-Type": "application/json", Authorization: `Bearer ${token()}` }; }
 
-const SUBJECTS = ["General", "Math", "Science", "History", "Literature", "Language", "Programming", "Art", "Music", "Other"];
+const SUBJECTS = ["Bio", "Combined Maths", "Physics", "Chemistry"];
 const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 // ── Auth Screen ────────────────────────────────────────────────────────────
@@ -149,7 +149,7 @@ function SessionList({ sessions }) {
           <div key={i} className="session-row">
             <div className="session-left">
               <span className={`session-dot ${s.completed ? "done" : "stop"}`} />
-              <span className="session-subject">{s.subject || "General"}</span>
+              <span className="session-subject">{s.subject || "Bio"}</span>
             </div>
             <div className="session-right">
               <span className="session-dur">{s.duration_minutes} min</span>
@@ -200,7 +200,7 @@ export default function App() {
   const [cache, setCache] = useState(null);
   const [view, setView] = useState("timer");
   const [sessionLen, setSessionLen] = useState(60);
-  const [subject, setSubject] = useState("General");
+  const [subject, setSubject] = useState("Bio");
   const [timeLeft, setTimeLeft] = useState(60 * 60);
   const [running, setRunning] = useState(false);
   const [sessionStart, setSessionStart] = useState(null);
