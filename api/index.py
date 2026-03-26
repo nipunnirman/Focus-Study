@@ -29,7 +29,7 @@ MONGO_URL    = os.getenv("MONGO_URL", "mongodb://localhost:27017")
 SECRET_KEY   = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
 ALGORITHM    = "HS256"
 TOKEN_EXPIRE = 60 * 24  # 24 hours in minutes
-CACHE_DIR    = "./json_cache"
+CACHE_DIR    = "/tmp/json_cache"
 os.makedirs(CACHE_DIR, exist_ok=True)
 
 # ── DB ───────────────────────────────────────────────────────────────
