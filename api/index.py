@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
 from motor.motor_asyncio import AsyncIOMotorClient
-import bcrypt
+import hashlib
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
 from typing import Optional, List
@@ -37,12 +37,25 @@ client = AsyncIOMotorClient(MONGO_URL)
 db = client.studyflow
 users_col    = db.users
 sessions_col = db.sessions
+users_col    = db.users
+sessions_col = db.sessions
 
 # ── Security ─────────────────────────────────────────────────────────
 oauth2  = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
-def hash_password(p): return bcrypt.hashpw(p.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-def verify_password(plain, hashed): return bcrypt.checkpw(plain.encode('utf-8'), hashed.encode('utf-8'))
+def hash_password(p: str) -> str:
+    salt = os.urandom(16)
+    hashed = hashlib.pbkdf2_hmac('sha256', p.encode('utf-8'), salt, 100000)
+    return salt.hex() + ":" + hashed.hex()
+
+def verify_password(plain: str, hashed_combo: str) -> bool:
+    try:
+        salt_hex, hash_hex = hashed_combo.split(':')
+        salt = bytes.fromhex(salt_hex)
+        hash_bytes = hashlib.pbkdf2_hmac('sha256', plain.encode('utf-8'), salt, 100000)
+        return hash_bytes.hex() == hash_hex
+    except Exception:
+        return False
 
 def create_token(data: dict):
     payload = data.copy()
@@ -72,6 +85,8 @@ async def load_to_cache(user_id: str):
     for s in sessions:
         s["_id"] = str(s["_id"])
     user = await users_col.find_one({"_id": user_id})
+    if not user:
+        user = {}
     cache = {
         "user_id": user_id,
         "name": user.get("name", ""),
