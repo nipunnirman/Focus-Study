@@ -210,6 +210,7 @@ export default function App() {
   const timerRef = useRef(null);
   const wsRef = useRef(null);
   const pollRef = useRef(null);
+  const lastTickRef = useRef(Date.now());
 
   // ── Login handler ──────────────────────────────────────────────────
   function handleLogin({ name, session_length, cache: loginCache }) {
@@ -297,17 +298,24 @@ export default function App() {
 
   useEffect(() => {
     if (running) {
+      lastTickRef.current = Date.now();
       timerRef.current = setInterval(() => {
-        setTimeLeft(prev => {
-          if (prev <= 1) {
-            clearInterval(timerRef.current);
-            setRunning(false);
-            stopTimer(true);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
+        const now = Date.now();
+        const deltaSecs = Math.floor((now - lastTickRef.current) / 1000);
+        if (deltaSecs >= 1) {
+          lastTickRef.current += deltaSecs * 1000;
+          setTimeLeft(prev => {
+            const next = prev - deltaSecs;
+            if (next <= 0) {
+              clearInterval(timerRef.current);
+              setRunning(false);
+              stopTimer(true);
+              return 0;
+            }
+            return next;
+          });
+        }
+      }, 500);
     } else {
       clearInterval(timerRef.current);
     }
