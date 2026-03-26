@@ -127,7 +127,7 @@ class SettingsBody(BaseModel):
     session_length: int  # minutes
 
 # ── Auth Routes ───────────────────────────────────────────────────────
-@app.post("/api/auth/register")
+@app.post("/auth/register")
 async def register(body: RegisterBody):
     if await users_col.find_one({"email": body.email}):
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -144,7 +144,7 @@ async def register(body: RegisterBody):
     await load_to_cache(user_id)
     return {"token": token, "name": body.name, "session_length": 60}
 
-@app.post("/api/auth/login")
+@app.post("/auth/login")
 async def login(form: OAuth2PasswordRequestForm = Depends()):
     user = await users_col.find_one({"email": form.username})
     if not user or not verify_password(form.password, user["password"]):
@@ -161,7 +161,7 @@ async def login(form: OAuth2PasswordRequestForm = Depends()):
     }
 
 # ── Session Routes ─────────────────────────────────────────────────────
-@app.post("/api/sessions")
+@app.post("/sessions")
 async def save_session(body: SessionBody, user=Depends(get_current_user)):
     session_doc = {
         "session_id": body.session_id,
@@ -183,7 +183,7 @@ async def save_session(body: SessionBody, user=Depends(get_current_user)):
     await update_cache_session(user["_id"], session_doc)
     return {"status": "saved"}
 
-@app.get("/api/sessions/cache")
+@app.get("/sessions/cache")
 async def get_cache(user=Depends(get_current_user)):
     """Frontend polls this for real-time data from JSON layer."""
     cache = read_cache(user["_id"])
@@ -191,7 +191,7 @@ async def get_cache(user=Depends(get_current_user)):
         cache = await load_to_cache(user["_id"])
     return cache
 
-@app.get("/api/sessions/weekly-report")
+@app.get("/sessions/weekly-report")
 async def weekly_report(user=Depends(get_current_user)):
     cache = read_cache(user["_id"])
     if not cache:
@@ -216,7 +216,7 @@ async def weekly_report(user=Depends(get_current_user)):
             pass
     return {"weekly": report, "total_minutes": sum(d["minutes"] for d in report.values())}
 
-@app.put("/api/settings")
+@app.put("/settings")
 async def update_settings(body: SettingsBody, user=Depends(get_current_user)):
     await users_col.update_one(
         {"_id": user["_id"]},
@@ -235,7 +235,7 @@ async def update_settings(body: SettingsBody, user=Depends(get_current_user)):
 # ── WebSocket for real-time timer broadcast ───────────────────────────
 active_connections: dict[str, list[WebSocket]] = {}
 
-@app.websocket("/api/ws/{user_id}")
+@app.websocket("/ws/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: str):
     await websocket.accept()
     active_connections.setdefault(user_id, []).append(websocket)

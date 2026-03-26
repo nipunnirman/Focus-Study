@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
-const API = import.meta.env.PROD || import.meta.env.VITE_VERCEL_ENV ? "/api" : "http://localhost:8001/api";
+const API = import.meta.env.PROD || import.meta.env.VITE_VERCEL_ENV ? "/api" : "http://localhost:8001";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 function pad(n) { return String(n).padStart(2, "0"); }
