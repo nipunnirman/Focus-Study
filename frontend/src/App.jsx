@@ -260,28 +260,34 @@ export default function App() {
   }, [view, user, cache]);
 
   // ── Timer logic ────────────────────────────────────────────────────
-  function startTimer() {
-    if (running) return;
-    setRunning(true);
-    setSessionStart(new Date().toISOString());
-    setSessionId(crypto.randomUUID());
-  }
+  const saveLocal = useCallback((sid, sStart, tLeft, sLen, subj) => {
+    localStorage.setItem("sf_active_session", JSON.stringify({
+      sessionId: sid,
+      sessionStart: sStart,
+      timeLeft: tLeft,
+      sessionLen: sLen,
+      subject: subj,
+      lastUpdate: Date.now()
+    }));
+  }, []);
 
-  function pauseTimer() { setRunning(false); }
+  const clearLocal = useCallback(() => {
+    localStorage.removeItem("sf_active_session");
+  }, []);
 
-  async function stopTimer(completed = false) {
-    setRunning(false);
-    if (!sessionStart) return;
+  const syncBackend = useCallback(async (sid, sStart, tLeft, sLen, subj, completed = false) => {
+    if (!sStart || !sid) return;
     const endedAt = new Date().toISOString();
-    const elapsed = sessionLen * 60 - timeLeft;
+    const elapsed = (sLen * 60) - tLeft;
+    // Must be safely at least 1 min, but strictly reflecting the real amount computed correctly from delta.
     const durationMin = Math.max(1, Math.round(elapsed / 60));
     const payload = {
-      session_id: sessionId || crypto.randomUUID(),
+      session_id: sid,
       duration_minutes: durationMin,
       completed,
       stopped_early: !completed,
-      subject,
-      started_at: sessionStart,
+      subject: subj,
+      started_at: sStart,
       ended_at: endedAt,
     };
     try {
@@ -291,6 +297,33 @@ export default function App() {
         body: JSON.stringify(payload),
       });
     } catch {}
+  }, []);
+
+  function startTimer() {
+    if (running) return;
+    setRunning(true);
+    const sid = sessionId || crypto.randomUUID();
+    const start = sessionStart || new Date().toISOString();
+    setSessionId(sid);
+    setSessionStart(start);
+    saveLocal(sid, start, timeLeft, sessionLen, subject);
+  }
+
+  function pauseTimer() { 
+    setRunning(false); 
+    // Manual pause update local storage with current timestamp
+    if (sessionId) {
+      saveLocal(sessionId, sessionStart, timeLeft, sessionLen, subject);
+      syncBackend(sessionId, sessionStart, timeLeft, sessionLen, subject, false);
+    }
+  }
+
+  async function stopTimer(completed = false) {
+    setRunning(false);
+    if (sessionStart) {
+      await syncBackend(sessionId, sessionStart, timeLeft, sessionLen, subject, completed);
+    }
+    clearLocal();
     setSessionStart(null);
     setSessionId(null);
     setTimeLeft(sessionLen * 60);
@@ -301,15 +334,32 @@ export default function App() {
       lastTickRef.current = Date.now();
       timerRef.current = setInterval(() => {
         const now = Date.now();
+        // Recalculating delta exactly so background pages catch up smoothly
         const deltaSecs = Math.floor((now - lastTickRef.current) / 1000);
         if (deltaSecs >= 1) {
           lastTickRef.current += deltaSecs * 1000;
           setTimeLeft(prev => {
             const next = prev - deltaSecs;
+            // Always commit current state to local storage to be offline resilient
+            saveLocal(sessionId, sessionStart, next, sessionLen, subject);
+            
+            // Auto sync backend roughly every 60 seconds of elapsed timer
+            if (Math.floor(prev / 60) !== Math.floor(next / 60)) {
+               syncBackend(sessionId, sessionStart, next, sessionLen, subject, false);
+            }
+
             if (next <= 0) {
               clearInterval(timerRef.current);
               setRunning(false);
-              stopTimer(true);
+              syncBackend(sessionId, sessionStart, 0, sessionLen, subject, true);
+              clearLocal();
+              // Cannot easily reset state inside a setter while running=false, 
+              // it's better to reset everything cleanly here but state updates will queue
+              setTimeout(() => {
+                 setSessionStart(null);
+                 setSessionId(null);
+                 setTimeLeft(sessionLen * 60);
+              }, 0);
               return 0;
             }
             return next;
@@ -320,11 +370,52 @@ export default function App() {
       clearInterval(timerRef.current);
     }
     return () => clearInterval(timerRef.current);
-  }, [running]);
+  }, [running, sessionId, sessionStart, sessionLen, subject, clearLocal, saveLocal, syncBackend]);
+
+  // Offline / Navigation Recovery - Loads the ongoing session back if abandoned 
+  useEffect(() => {
+    if (user && !running && !sessionId) {
+      try {
+        const active = localStorage.getItem("sf_active_session");
+        if (active) {
+          const data = JSON.parse(active);
+          const elapsedSecs = Math.floor((Date.now() - data.lastUpdate) / 1000);
+          // If browser was closed while running, deduct the time it was closed
+          let newTimeLeft = data.timeLeft;
+          // Only decrement if we assume it was actively running when closed
+          // For simplicity we'll just restore the exact time it had left according to its last active tick.
+          // Because they didn't officially finish.
+          if (newTimeLeft <= 0) {
+            syncBackend(data.sessionId, data.sessionStart, 0, data.sessionLen, data.subject, true);
+            clearLocal();
+          } else {
+            setSessionId(data.sessionId);
+            setSessionStart(data.sessionStart);
+            setSessionLen(data.sessionLen);
+            setSubject(data.subject);
+            setTimeLeft(newTimeLeft);
+          }
+        }
+      } catch (e) {}
+    }
+  }, [user]);
+
+  // Online connection restores data 
+  useEffect(() => {
+    function handleOnline() {
+      const active = localStorage.getItem("sf_active_session");
+      if (active) {
+        const data = JSON.parse(active);
+        syncBackend(data.sessionId, data.sessionStart, timeLeft, data.sessionLen, data.subject, false);
+      }
+    }
+    window.addEventListener("online", handleOnline);
+    return () => window.removeEventListener("online", handleOnline);
+  }, [timeLeft, syncBackend]);
 
   useEffect(() => {
-    if (!running) setTimeLeft(sessionLen * 60);
-  }, [sessionLen]);
+    if (!running && !sessionId) setTimeLeft(sessionLen * 60);
+  }, [sessionLen, running, sessionId]);
 
   // ── Logout ─────────────────────────────────────────────────────────
   function logout() {
